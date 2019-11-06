@@ -1,21 +1,4 @@
-# kintone customize master
+# Garoon & Box 連携
 
-## npm tools
-- babel
-- eslint
-- prettier
-- webpack
-
-## npm command with watch
-- webpack_dev
-- webpack_prod
-- uploader (kintone-customize-uploader)
-
-## browserslist
-- "last 1 ie version",
-- "last 1 Edge version",
-- "last 1 Chrome version",
-- "last 1 Firefox version",
-- "last 1 safari version",
-- "last 3 iOS versions",
-- "last 1 ChromeAndroid version"
+## 概要
+予定に紐づく Box Notes をボタンひとつで作成・表⽰します。Box Note を作っておけば、打ち合わせなどの議事録のメモ帳として使えるので、議事録管理もかんたんです。
