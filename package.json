@@ -1,6 +1,6 @@
 {
   "name": "garoonBox",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "index.js",
   "scripts": {
     "webpack_dev": "webpack --config webpack.dev.js",
@@ -19,29 +19,28 @@
     "last 1 Chrome version",
     "last 1 Firefox version",
     "last 1 safari version",
-    "last 3 iOS versions",
+    "last 2 iOS versions",
     "last 1 ChromeAndroid version"
   ],
   "description": "",
   "devDependencies": {
-    "@babel/cli": "^7.6.4",
-    "@babel/core": "^7.6.4",
-    "@babel/preset-env": "^7.6.3",
-    "@cybozu/eslint-config": "^3.2.1",
-    "babel-loader": "^8.0.6",
-    "core-js": "^3.2.1",
-    "eslint": "^5.16.0",
-    "eslint-loader": "^2.2.1",
-    "prettier": "^1.18.2",
-    "regenerator-runtime": "^0.13.3",
-    "typescript": "^3.6.4",
-    "webpack": "^4.41.1",
-    "webpack-bundle-analyzer": "^3.5.2",
-    "webpack-cli": "^3.3.9",
-    "webpack-merge": "^4.2.2",
-    "webpack-stream": "^5.2.1"
+    "@babel/cli": "^7.14.5",
+    "@babel/core": "^7.14.6",
+    "@babel/preset-env": "^7.14.7",
+    "@cybozu/eslint-config": "^14.0.2",
+    "babel-loader": "^8.2.2",
+    "core-js": "^3.15.2",
+    "css-loader": "^6.2.0",
+    "eslint": "^7.31.0",
+    "prettier": "^2.3.2",
+    "regenerator-runtime": "^0.13.7",
+    "style-loader": "^3.1.0",
+    "webpack": "^5.45.1",
+    "webpack-cli": "^4.7.2",
+    "webpack-merge": "^5.8.0"
   },
   "dependencies": {
-    "oauthio-web": "^0.6.2"
+    "jquery": "^3.6.0",
+    "kintone-ui-component": "^1.0.3"
   }
 }

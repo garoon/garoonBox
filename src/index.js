@@ -1,224 +1,344 @@
-(function() {
+import jQuery from "jquery";
+import "./grn_kit.css";
+import { Spinner } from "kintone-ui-component/lib/spinner";
+
+(($) => {
   "use strict";
-  const myJQuery = jQuery.noConflict(true);
-  (function($) {
-    // oauth.ioで定義
-    const OAUTHIO_APP_NAME = "box";
-    // oauth.ioで取得
-    const OAUTHIO_PUBLIC_KEY = "XXXXXXXX";
-    // コピー対象のboxnoteテンプレートのファイルID
-    const BOX_TARGET_FILE_ID = "0000000";
-    // GaroonのプロキシAPIの設定
-    const GAROON_PROXY_API_CONF = {
-      copyNote: {
-        code: "copyNote",
-        method: "POST",
-        url: "https://api.box.com/2.0"
-      },
-      createSharedLink: {
-        code: "createSharedLink",
-        method: "PUT",
-        URL: "https://api.box.com/2.0"
-      }
-    };
-    const ERROR_MESSAGE = {
-      FAIL_EXEC_PROCY_API:
-        "プロキシAPIの実行に失敗しました。\nプロキシAPI設定を確認してください。",
-      FAIL_GET_ELEMENTS:
-        "連携用HTML要素の取得に失敗しました。\n予定の連携メニューの設定を確認してください。",
-      FAIL_COPY_BOXNOTE: "boxnoteの作成に失敗しました。",
-      FAIL_CREATE_SHARED_LINK: "共有リンクの作成に失敗しました。"
-    };
+  // コピー対象のboxnoteテンプレートのファイルID
+  const BOX_TARGET_FILE_ID = "XXXXXXXX"; // TODO: コピーしたいNoteに合わせて要変更
 
-    /**
-     * OAuth.ioのSDKを利用し、boxのアクセストークンを取得する関数
-     * @returns {Promise}
-     */
-    async function getAccessToken() {
-      OAuth.initialize(OAUTHIO_PUBLIC_KEY);
-      const OauthResult = await OAuth.popup(OAUTHIO_APP_NAME, {
-        cache: true
-      });
-      return OauthResult.access_token;
+  // datastoreに格納する際のkeyの値
+  const datastoreKey = "jp.co.cybozu.schedule.box";
+
+  // GaroonのプロキシAPIの設定
+  const GAROON_PROXY_API_CONF = {
+    copyNote: {
+      code: "copyNote",
+      method: "POST",
+      url: "https://api.box.com/2.0/files"
+    },
+    createSharedLink: {
+      code: "createSharedLink",
+      method: "PUT",
+      url: "https://api.box.com/2.0/files"
+    },
+    getApiToken: {
+      code: "getApiToken",
+      method: "POST",
+      url: "https://api.box.com/oauth2/token"
+    },
+    getUserId: {
+      code: "getUserId",
+      method: "GET",
+      url: "https://api.box.com/2.0/users"
+    },
+    getCollaborations: {
+      code: "getCollaborations",
+      method: "GET",
+      url: "https://api.box.com/2.0/files"
+    },
+    addUserToCollaborations: {
+      code: "addUserToCollaborations",
+      method: "POST",
+      url: "https://api.box.com/2.0/collaborations"
     }
+  };
 
-    /**
-     * box APIで既存ファイルのコピーを行う関数
-     * boxnote用のAPIは存在しないため，テンプレートを作成しておき，
-     * それをコピーする仕様としている。
-     * box API reference: https://developer.box.com/reference
-     * @param {String} accessToken
-     * @returns {Promise} garoon.Promise
-     */
-    async function copyNote(accessToken) {
-      // Garoonで定義
-      const proxyCode = GAROON_PROXY_API_CONF.copyNote.code;
-      const noteName = garoon.schedule.event.get().subject;
-      const url = `https://api.box.com/2.0/files/${BOX_TARGET_FILE_ID}/copy`;
-      const headers = {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      };
-      const data = {
-        parent: {
-          id: "0"
-        },
-        name: `${noteName}.boxnote`
-      };
-      return garoon.base.proxy.send(proxyCode, url, "POST", headers, data);
-    }
+  const ERROR_MESSAGE = {
+    FAIL_EXEC_PROCY_API:
+      "プロキシAPIの実行に失敗しました。プロキシAPI設定を確認してください。",
+    FAIL_GET_ELEMENTS:
+      "連携用HTML要素の取得に失敗しました。予定の連携メニューの設定を確認してください。",
+    FAIL_COPY_BOXNOTE: "boxnoteの作成に失敗しました。",
+    FAIL_CREATE_SHARED_LINK: "共有リンクの作成に失敗しました。",
+    FAIL_GET_COLLABORATIONS:
+      "ファイルのコラボレーションリストの取得に失敗しました。",
+    FAIL_GET_API_TOKEN: "APIトークンの取得に失敗しました。",
+    FAIL_GET_USER_ID: "Boxユーザーの取得に失敗しました。"
+  };
 
-    /**
-     * box APIで共有リンクのURLを作成、取得する関数
-     * @param {Number} id
-     * @param {String} accessToken
-     * @returns {Promise} garoon.Promise
-     */
-    async function createSharedLink(id, accessToken) {
-      // Garoonで定義
-      const proxyCode = GAROON_PROXY_API_CONF.createSharedLink.code;
-      const url = `https://api.box.com/2.0/files/${id}?fields=shared_link`;
-      const headers = {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      };
-      const data = {
-        shared_link: {
-          access: "company"
-        }
-      };
-      return garoon.base.proxy.send(proxyCode, url, "PUT", headers, data);
-    }
-
-    /**
-     * Garoonのスケジュール、AdditionalItemsにboxの共有リンクを埋め込む関数
-     * @param {String} sharedLink
-     */
-    const setSharedLinkToSchedule = sharedLink => {
-      const scheduleId = garoon.schedule.event.get().id;
-      const url = `/api/v1/schedule/events/${scheduleId}`;
-      const params = {
-        additionalItems: {
-          item: {
-            value: sharedLink
-          }
-        }
-      };
-      garoon.api(url, "PATCH", params, () => {
-        location.reload();
-      });
-    };
-
-    /**
-     * box noteを作成する関数
-     * Oauth認証によるアクセストークンの取得、
-     * box noteの作成
-     * 作成したnoteの共有リンク取得
-     * 共有リンクをAdditionalItemに代入する。
-     */
-    async function createNote() {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        return;
+  /**
+   * client credentials認証によりBoxのAPIトークンを取得する関数
+   * @returns {Promise}
+   */
+  async function getApiToken() {
+    const { code, method, url } = GAROON_PROXY_API_CONF.getApiToken;
+    return garoon.base.proxy.send(code, url, method, {}, {}).then((resp) => {
+      if (resp[1] !== 200) {
+        throw new Error(ERROR_MESSAGE.FAIL_GET_API_TOKEN);
       }
-      // boxnoteコピー
-      const resultOfCopy = await copyNote(accessToken).catch(() => {
-        alert(ERROR_MESSAGE.FAIL_EXEC_PROCY_API);
-      });
-      const detailOfCopyNote = JSON.parse(resultOfCopy[0]);
-      // box note作成の実行結果確認
-      if (resultOfCopy[1] !== 201) {
-        alert(
-          `${ERROR_MESSAGE.FAIL_COPY_BOXNOTE}\nstatus:${detailOfCopyNote.status}\nmessage:${detailOfCopyNote.code}`
-        );
-        return;
-      }
-
-      // boxnote共有リンク取得
-      const fileId = detailOfCopyNote.id;
-      const resultOfCreateLink = await createSharedLink(
-        fileId,
-        accessToken
-      ).catch(() => {
-        alert(ERROR_MESSAGE.FAIL_EXEC_PROCY_API);
-      });
-      const detailOfCreateLink = JSON.parse(resultOfCreateLink[0]);
-      // 共有リンク作成の実行結果確認
-      if (resultOfCreateLink[1] !== 200) {
-        alert(
-          `${ERROR_MESSAGE.FAIL_CREATE_SHARED_LINK}\nstatus:${detailOfCreateLink.status}\nmessage:${detailOfCreateLink.code}`
-        );
-        return;
-      }
-
-      setSharedLinkToSchedule(
-        JSON.parse(resultOfCreateLink[0]).shared_link.url
-      );
-    }
-
-    /**
-     * box noteの作成ボタンを表示する関数
-     */
-    const showCreateBotton = () => {
-      if ($("#create-note-button").length !== 1) {
-        alert(ERROR_MESSAGE.FAIL_GET_ELEMENTS);
-        return;
-      }
-      $("#create-note-button").click(createNote);
-      $("#create-note-button").show();
-    };
-
-    const clearSharedLinkOfSchedule = () => {
-      setSharedLinkToSchedule("");
-    };
-
-    /**
-     * AdditinoalItemsから取得したbocの共有リンクをもとに、
-     * 埋め込みiframeを作成、表示する関数
-     * @param {String} sharedLink
-     */
-    const showExistedNote = sharedLink => {
-      const sharedLinkCode = sharedLink.replace("https://app.box.com/s/", "");
-      const embeddedUrl = `https://app.box.com/embed/s/${sharedLinkCode}?showParentPath=false`;
-      const $linkNoteButton = $("#link-note-button");
-      const $embeddedBoxNote = $("#embedded-box-note");
-      const $disconnectNoteButton = $("#disconnect-note-button");
-      if (
-        $linkNoteButton.length !== 1 ||
-        $embeddedBoxNote.length !== 1 ||
-        $disconnectNoteButton.length !== 1
-      ) {
-        alert(ERROR_MESSAGE.FAIL_GET_ELEMENTS);
-        return;
-      }
-      $linkNoteButton.click(() => {
-        window.open(sharedLink, "_blank");
-      });
-      $linkNoteButton.show();
-      $embeddedBoxNote[0].src = embeddedUrl;
-      $embeddedBoxNote.show();
-      $disconnectNoteButton.click(clearSharedLinkOfSchedule);
-      $disconnectNoteButton.show();
-    };
-
-    garoon.events.on("schedule.event.detail.show", event => {
-      const boxSharedUrl = event.event.additionalItems.item.value;
-
-      // 連携対象の予定メニューに表示されるhtml要素がなければ対象外として処理終了
-      if ($("#box-content").length !== 1) {
-        return;
-      }
-
-      // boxの連携URLの存在確認
-      if (boxSharedUrl === "") {
-        showCreateBotton();
-      } else {
-        // AdditionalItemlsにboxの共有リンク以外が入っていた場合処理終了
-        if (!boxSharedUrl.includes("https://app.box.com/s/")) {
-          return;
-        }
-        showExistedNote(boxSharedUrl);
-      }
+      return JSON.parse(resp[0]).access_token;
     });
-  })(myJQuery);
-})();
+  }
+
+  /**
+   * Boxユーザーの内ユーザーIDを取得する関数
+   * @param {String} accessToken
+   * @returns {Promise}
+   */
+  async function getUserId(accessToken) {
+    const { code, method, url } = GAROON_PROXY_API_CONF.getUserId;
+    const headers = {
+      Authorization: `Bearer ${accessToken}`
+    };
+    const { email } = garoon.base.user.getLoginUser();
+    const urlWithParam = `${url}/?filter_term=${email}`;
+    return garoon.base.proxy
+      .send(code, urlWithParam, method, headers, {})
+      .then((resp) => {
+        const respData = JSON.parse(resp[0]);
+        if (resp[1] !== 200 || respData.total_count !== 1) {
+          throw new Error(ERROR_MESSAGE.FAIL_GET_USER_ID);
+        }
+        return respData.entries[0].id;
+      });
+  }
+
+  /**
+   * ファイルのコラボレーション(アクセス権)を取得する関数
+   * @param {String} accessToken
+   * @returns {Promise}
+   */
+  async function getAccessibleUserIds(accessToken) {
+    const { code, method, url } = GAROON_PROXY_API_CONF.getCollaborations;
+    const headers = {
+      Authorization: `Bearer ${accessToken}`
+    };
+    const urlWithParam = `${url}/${BOX_TARGET_FILE_ID}/collaborations`;
+    return garoon.base.proxy
+      .send(code, urlWithParam, method, headers, {})
+      .then((resp) => {
+        if (resp[1] !== 200) {
+          throw new Error(ERROR_MESSAGE.FAIL_GET_COLLABORATIONS);
+        }
+        return JSON.parse(resp[0])
+          .entries.filter((entry) => {
+            return entry.accessible_by.type === "user";
+          })
+          .map((entry) => {
+            return entry.accessible_by.id;
+          });
+      });
+  }
+
+  /**
+   * ファイルのコラボレーション(アクセス権)に操作ユーザーを追加する
+   * @param {String} accessToken
+   * @returns {Promise}
+   */
+  async function addUserToAccessibleList(accessToken, userId) {
+    const { code, method, url } = GAROON_PROXY_API_CONF.addUserToCollaborations;
+    const headers = {
+      Authorization: `Bearer ${accessToken}`
+    };
+    const data = {
+      accessible_by: {
+        id: userId,
+        type: "user"
+      },
+      item: {
+        id: BOX_TARGET_FILE_ID,
+        type: "file"
+      },
+      role: "editor"
+    };
+    return garoon.base.proxy
+      .send(code, url, method, headers, data)
+      .then((resp) => {
+        if (resp[1] !== 201) {
+          throw new Error(ERROR_MESSAGE.FAIL_COPY_BOXNOTE);
+        }
+      });
+  }
+
+  /**
+   * box APIで既存ファイルのコピーを行う関数
+   * boxnote用のAPIは存在しないため，テンプレートを作成しておき，
+   * それをコピーする仕様としている。
+   * box API reference: https://developer.box.com/reference
+   * @param {String} accessToken
+   * @returns {Promise} 作成したnoteのid
+   */
+  async function copyNote(accessToken, userId) {
+    const { code, method, url } = GAROON_PROXY_API_CONF.copyNote;
+    const noteName = garoon.schedule.event.get().subject;
+    const urlWithParam = `${url}/${BOX_TARGET_FILE_ID}/copy`;
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      "as-user": userId
+    };
+    const data = {
+      parent: {
+        id: "0"
+      },
+      name: `${noteName}.boxnote`
+    };
+    return garoon.base.proxy
+      .send(code, urlWithParam, method, headers, data)
+      .then((resp) => {
+        if (resp[1] !== 201) {
+          throw new Error(ERROR_MESSAGE.FAIL_COPY_BOXNOTE);
+        }
+
+        return JSON.parse(resp[0]).id;
+      });
+  }
+
+  /**
+   * box APIで共有リンクのURLを作成、取得する関数
+   * @param {Number} id
+   * @param {String} accessToken
+   * @returns {Promise}
+   */
+  async function createSharedLink(id, accessToken, userId) {
+    const { code, url, method } = GAROON_PROXY_API_CONF.createSharedLink;
+    const urlWithParam = `${url}/${id}?fields=shared_link`;
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      "as-user": userId
+    };
+    const data = {
+      shared_link: {
+        access: "company"
+      }
+    };
+    return garoon.base.proxy
+      .send(code, urlWithParam, method, headers, data)
+      .then((resp) => {
+        if (resp[1] !== 200) {
+          throw new Error(ERROR_MESSAGE.FAIL_CREATE_SHARED_LINK);
+        }
+        return JSON.parse(resp[0]).shared_link.url;
+      });
+  }
+
+  /**
+   * Garoonのスケジュール、datastoreにboxの共有リンクを埋め込む関数
+   * @param {String} sharedLink
+   */
+  async function setSharedLinkToSchedule(sharedLink) {
+    const value = {
+      value: { sharedLink }
+    };
+
+    const { id } = garoon.schedule.event.get();
+    const path = `/api/v1/schedule/events/${id}/datastore/${datastoreKey}`;
+    garoon.api(path, "POST", value).then(() => {
+      location.reload();
+    });
+  }
+
+  /**
+   * Garoonのスケジュール、datastoreの共有リンクを削除する関数
+   * @param {String} sharedLink
+   */
+  function clearSharedLink() {
+    const { id } = garoon.schedule.event.get();
+    const path = `/api/v1/schedule/events/${id}/datastore/${datastoreKey}`;
+    garoon
+      .api(path, "DELETE", {})
+      .then(() => {
+        location.reload();
+      })
+      .catch((error) => {
+        alert(error.message);
+        console.error(error);
+      });
+  }
+
+  /**
+   * box noteを作成する関数
+   */
+  async function createNote() {
+    const spinner = new Spinner();
+    try {
+      spinner.open();
+      const accessToken = await getApiToken();
+      const [userId, accessibleUserIds] = await Promise.all([
+        getUserId(accessToken),
+        getAccessibleUserIds(accessToken)
+      ]);
+
+      if (!accessibleUserIds.includes(userId)) {
+        await addUserToAccessibleList(accessToken, userId);
+      }
+
+      const copiedNoteId = await copyNote(accessToken, userId);
+      const sharedLink = await createSharedLink(
+        copiedNoteId,
+        accessToken,
+        userId
+      );
+      setSharedLinkToSchedule(sharedLink);
+    } catch (error) {
+      alert(error.message);
+      console.error(error);
+    } finally {
+      spinner.close();
+    }
+  }
+
+  /**
+   * box noteの作成ボタンを表示する関数
+   */
+  const showCreateButton = () => {
+    if ($("#create-note-button").length !== 1) {
+      throw new Error(ERROR_MESSAGE.FAIL_GET_ELEMENTS);
+    }
+    $("#create-note-button").on("click", createNote);
+    $("#create-note-button").show();
+  };
+
+  /**
+   * datastoreから取得したbocの共有リンクをもとに、
+   * 埋め込みiframeを作成、表示する関数
+   * @param {String} sharedLink
+   */
+  const showExistedNote = (sharedLink) => {
+    const sharedLinkCode = sharedLink.replace(
+      /^https:\/\/.+\.box\.com\/s\//,
+      ""
+    );
+    // const baseUrl = sharedLink.replace(sharedLinkCode, "");
+    const baseUrl = "https://app.box.com";
+    const embeddedUrl = `${baseUrl}/embed/s/${sharedLinkCode}?showParentPath=false`;
+    const $linkNoteButton = $("#link-note-button");
+    const $embeddedBoxNote = $("#embedded-box-note");
+    const $disconnectNoteButton = $("#disconnect-note-button");
+    if (
+      $linkNoteButton.length !== 1 ||
+      $embeddedBoxNote.length !== 1 ||
+      $disconnectNoteButton.length !== 1
+    ) {
+      throw new Error(ERROR_MESSAGE.FAIL_GET_ELEMENTS);
+    }
+
+    $linkNoteButton.on("click", () => {
+      window.open(sharedLink, "_blank");
+    });
+    $linkNoteButton.show();
+
+    $embeddedBoxNote[0].src = embeddedUrl;
+    $embeddedBoxNote.show();
+
+    $disconnectNoteButton.on("click", clearSharedLink);
+    $disconnectNoteButton.show();
+  };
+
+  garoon.events.on("schedule.event.detail.show", (event) => {
+    const dataStoreData = garoon.schedule.event.datastore.get(datastoreKey);
+    const boxSharedUrl = dataStoreData ? dataStoreData.value.sharedLink : "";
+
+    if ($("#box-content").length !== 1) {
+      return;
+    }
+
+    if (boxSharedUrl === "") {
+      showCreateButton();
+    } else {
+      showExistedNote(boxSharedUrl);
+    }
+
+    return event;
+  });
+})(jQuery.noConflict(true));
